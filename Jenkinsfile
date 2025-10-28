@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        // Make sure this is your correct Docker Hub ID
+        // Confirm this is your correct Docker Hub ID
         DOCKERHUB_ID = "nikhildocker976"
         IMAGE_NAME = "vote-app"
     }
@@ -19,7 +19,7 @@ pipeline {
         stage('🚀 Push to Docker Hub') {
             steps {
                 echo "Pushing the ${IMAGE_NAME} image to Docker Hub..."
-                // Use the credentials we just saved in Jenkins
+                // Use the credentials we just saved
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     // Log in to Docker Hub
                     sh "docker login -u '${DOCKER_USER}' -p '${DOCKER_PASS}'"

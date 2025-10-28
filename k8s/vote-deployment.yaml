@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote-deployment
+  labels:
+    app: vote
+spec:
+  replicas: 2 # Run 2 instances of the app for high availability
+  selector:
+    matchLabels:
+      app: vote
+  template:
+    metadata:
+      labels:
+        app: vote
+    spec:
+      containers:
+      - name: vote
+        # IMPORTANT: Use your own Docker Hub image here
+        image: nikhildocker976/vote-app:latest
+        ports:
+        - containerPort: 80

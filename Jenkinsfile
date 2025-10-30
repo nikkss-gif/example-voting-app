@@ -3,7 +3,9 @@ pipeline {
 
     environment {
         DOCKERHUB_ID = "nikhildocker976"
-        IMAGE_NAME = "vote-app"
+        IMAGE_NAME   = "vote-app"
+        AWS_REGION   = "ap-south-1"
+        CLUSTER_NAME = "devops-project-cluster"
     }
 
     stages {
@@ -24,8 +26,12 @@ pipeline {
 
         stage('🚢 Deploy to Kubernetes') {
             steps {
-                // YEH NAYA CODE HAI: Is stage ko AWS credentials ke saath run karo
-                withAWS(credentials: 'aws-credentials', region: 'ap-south-1') {
+                // Use the AWS credentials
+                withAWS(credentials: 'aws-credentials', region: env.AWS_REGION) {
+                    echo "Configuring kubectl for EKS cluster..."
+                    // YEH SABSE ZAROORI COMMAND HAI: Cluster ka address set karo
+                    sh "aws eks --region ${env.AWS_REGION} update-kubeconfig --name ${env.CLUSTER_NAME}"
+
                     echo "Deploying the application to EKS cluster..."
                     sh 'kubectl apply -f k8s/'
                 }

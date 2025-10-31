@@ -23,16 +23,11 @@ pipeline {
                 }
             }
         }
-
+        
         stage('🚢 Deploy to Kubernetes') {
             steps {
-                // Use the AWS credentials
                 withAWS(credentials: 'aws-credentials', region: env.AWS_REGION) {
-                    echo "Configuring kubectl for EKS cluster..."
-                    // YEH SABSE ZAROORI COMMAND HAI: Cluster ka address set karo
                     sh "aws eks --region ${env.AWS_REGION} update-kubeconfig --name ${env.CLUSTER_NAME}"
-
-                    echo "Deploying the application to EKS cluster..."
                     sh 'kubectl apply -f k8s/'
                 }
             }

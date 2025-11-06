@@ -46,15 +46,33 @@ pipeline {
             }
         }
 
-        stage('Deploy to EKS') {
+        stage('Deploy to EKS (Full Stack)') {
             steps {
                 script {
                     sh '''
+                    echo "🚀 Updating kubeconfig for cluster..."
                     aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME
-                    kubectl apply -f k8s/redis-deployment.yaml
-                    kubectl apply -f k8s/redis-service.yaml
-                    kubectl apply -f k8s/vote-deployment.yaml
-                    kubectl apply -f k8s/vote-service.yaml
+
+                    echo "📦 Deploying Redis..."
+                    kubectl apply -f k8s-specifications/redis-deployment.yaml
+                    kubectl apply -f k8s-specifications/redis-service.yaml
+
+                    echo "🗄️ Deploying PostgreSQL (DB)..."
+                    kubectl apply -f k8s-specifications/db-deployment.yaml
+                    kubectl apply -f k8s-specifications/db-service.yaml
+
+                    echo "🗳️ Deploying Vote App..."
+                    kubectl apply -f k8s-specifications/vote-deployment.yaml
+                    kubectl apply -f k8s-specifications/vote-service.yaml
+
+                    echo "⚙️ Deploying Worker..."
+                    kubectl apply -f k8s-specifications/worker-deployment.yaml
+
+                    echo "📊 Deploying Result App..."
+                    kubectl apply -f k8s-specifications/result-deployment.yaml
+                    kubectl apply -f k8s-specifications/result-service.yaml
+
+                    echo "✅ All components applied successfully!"
                     '''
                 }
             }
@@ -63,7 +81,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deployment successful!"
+            echo "✅ Full Stack Deployment Successful!"
             sh 'kubectl get svc'
         }
         failure {

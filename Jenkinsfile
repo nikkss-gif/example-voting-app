@@ -6,12 +6,13 @@ pipeline {
         REGION = 'ap-south-1'
         REPO_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devops-project-repo"
         CLUSTER_NAME = 'devops-project-cluster'
-        IMAGE_TAG = "latest" // ya "${env.GIT_COMMIT.take(8)}" for immutable tags
+        IMAGE_TAG = "latest"
     }
 
     stages {
         stage('Checkout Code') {
             steps {
+                echo "📥 Checking out source code..."
                 checkout scm
             }
         }
@@ -19,33 +20,32 @@ pipeline {
         stage('Clean Old Deployments') {
             steps {
                 script {
-                    // ignore-not-found ensures no error if resource missing
                     sh '''
-                    echo "🧹 Cleaning previously applied k8s resources (if any)..."
+                    echo "🧹 Cleaning previously applied Kubernetes resources..."
                     kubectl delete -f k8s-specifications --ignore-not-found=true || true
-                    sleep 2
+                    sleep 3
                     '''
                 }
             }
         }
 
-        stage('Build Docker Images (parallel)') {
+        stage('Build Docker Images (Parallel)') {
             parallel {
-                stage('Build: vote') {
+                stage('Build: Vote') {
                     steps {
                         dir('vote') {
                             sh "docker build -t ${REPO_URI}:vote-${IMAGE_TAG} ."
                         }
                     }
                 }
-                stage('Build: result') {
+                stage('Build: Result') {
                     steps {
                         dir('result') {
                             sh "docker build -t ${REPO_URI}:result-${IMAGE_TAG} ."
                         }
                     }
                 }
-                stage('Build: worker') {
+                stage('Build: Worker') {
                     steps {
                         dir('worker') {
                             sh "docker build -t ${REPO_URI}:worker-${IMAGE_TAG} ."
@@ -59,18 +59,18 @@ pipeline {
             steps {
                 script {
                     sh '''
-                    echo "🔐 Logging into ECR..."
-                    aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+                    echo "🔐 Logging into AWS ECR..."
+                    aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${REPO_URI}
                     '''
                 }
             }
         }
 
-        stage('Push Images to ECR') {
+        stage('Push Docker Images') {
             steps {
                 script {
                     sh '''
-                    echo "📦 Pushing images to ECR..."
+                    echo "📦 Pushing Docker images to ECR..."
                     docker push ${REPO_URI}:vote-${IMAGE_TAG}
                     docker push ${REPO_URI}:result-${IMAGE_TAG}
                     docker push ${REPO_URI}:worker-${IMAGE_TAG}
@@ -83,29 +83,24 @@ pipeline {
             steps {
                 script {
                     sh '''
-                    echo "🚀 Updating kubeconfig for ${CLUSTER_NAME}..."
+                    echo "🚀 Deploying to Amazon EKS cluster: ${CLUSTER_NAME}"
                     aws eks update-kubeconfig --region ${REGION} --name ${CLUSTER_NAME}
 
-                    echo "📦 Applying k8s manifests from k8s-specifications..."
+                    echo "📦 Applying Redis and DB..."
                     kubectl apply -f k8s-specifications/redis-deployment.yaml
                     kubectl apply -f k8s-specifications/redis-service.yaml
-
                     kubectl apply -f k8s-specifications/db-deployment.yaml
                     kubectl apply -f k8s-specifications/db-service.yaml
 
-                    # Ensure image fields in deployments point to the images we pushed.
-                    # Patch vote, result, worker deployments to use the newly pushed images.
-                    kubectl set image deployment/vote vote=${REPO_URI}:vote-${IMAGE_TAG} --record || true
-                    kubectl set image deployment/result result=${REPO_URI}:result-${IMAGE_TAG} --record || true
-                    kubectl set image deployment/worker worker=${REPO_URI}:worker-${IMAGE_TAG} --record || true
-
+                    echo "⚙️ Deploying Vote, Worker, and Result apps..."
                     kubectl apply -f k8s-specifications/vote-deployment.yaml
                     kubectl apply -f k8s-specifications/vote-service.yaml
-
                     kubectl apply -f k8s-specifications/worker-deployment.yaml
-
                     kubectl apply -f k8s-specifications/result-deployment.yaml
                     kubectl apply -f k8s-specifications/result-service.yaml
+
+                    echo "🕐 Waiting for pods to become ready..."
+                    kubectl wait --for=condition=available deployment --all -n default --timeout=120s || true
 
                     echo "✅ All components applied successfully!"
                     '''
@@ -113,19 +108,17 @@ pipeline {
             }
         }
 
-        stage('Optional: Convert result service -> LoadBalancer') {
-            when {
-                expression { return params.MAKE_RESULT_LOADBALANCER == true }
-            }
+        stage('Convert Result to LoadBalancer (Public)') {
             steps {
                 script {
                     sh '''
-                    echo "🔁 Patching result service to type=LoadBalancer..."
+                    echo "🌍 Converting result service to LoadBalancer..."
                     kubectl patch svc result -p '{"spec": {"type": "LoadBalancer"}}' || true
-                    echo "Waiting for external IP..."
+
+                    echo "⏳ Waiting for public IP to be assigned..."
                     for i in {1..20}; do
                       kubectl get svc result -o wide
-                      sleep 3
+                      sleep 5
                     done
                     '''
                 }
@@ -133,18 +126,23 @@ pipeline {
         }
     }
 
-    parameters {
-        booleanParam(name: 'MAKE_RESULT_LOADBALANCER', defaultValue: false, description: 'If true, patch result service to LoadBalancer (exposes result publicly)')
-    }
-
     post {
         success {
-            echo "✅ Full Stack Deployment Successful!"
-            sh 'kubectl get pods -o wide || true'
-            sh 'kubectl get svc || true'
+            echo "✅ ✅ Full Stack Deployment Successful!"
+            sh '''
+            echo "📋 Current Pod Status:"
+            kubectl get pods -o wide
+
+            echo "🌐 Current Services and Public URLs:"
+            kubectl get svc -o wide
+            echo ""
+            echo "🎯 Access your apps:"
+            echo "Vote App URL:    http://$(kubectl get svc vote-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+            echo "Result App URL:  http://$(kubectl get svc result -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+            '''
         }
         failure {
-            echo "❌ Deployment failed. Check Jenkins logs for details."
+            echo "❌ Deployment failed! Check the Jenkins logs for more info."
         }
     }
 }

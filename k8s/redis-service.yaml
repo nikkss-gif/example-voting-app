@@ -3,8 +3,7 @@ kind: Service
 metadata:
   name: redis
 spec:
+  ports:
+    - port: 6379
   selector:
     app: redis
-  ports:
-  - port: 6379
-    targetPort: 6379

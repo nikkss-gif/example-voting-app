@@ -17,6 +17,6 @@ spec:
       containers:
       - name: vote
         # IMPORTANT: Use your own Docker Hub image here
-        image: nikhildocker976/vote-app:latest
+        image: 785661981860.dkr.ecr.ap-south-1.amazonaws.com/devops-project-repo:latest
         ports:
         - containerPort: 80

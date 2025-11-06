@@ -2,35 +2,61 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_ID = "nikhildocker976"
-        IMAGE_NAME   = "vote-app"
-        AWS_REGION   = "ap-south-1"
-        CLUSTER_NAME = "devops-project-cluster"
+        REPO_URI = '785661981860.dkr.ecr.ap-south-1.amazonaws.com/devops-project-repo'
+        CLUSTER_NAME = 'devops-project-cluster'
+        REGION = 'ap-south-1'
+        DEPLOYMENT_NAME = 'devops-app'
     }
 
     stages {
-        stage('🔨 Build Docker Image') {
+        stage('Checkout Code') {
             steps {
-                sh "docker build -t ${DOCKERHUB_ID}/${IMAGE_NAME}:latest ./vote"
+                git branch: 'main', url: 'https://github.com/<your-username>/<your-repo>.git'
             }
         }
 
-        stage('🚀 Push to Docker Hub') {
+        stage('Build Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh "docker login -u '${DOCKER_USER}' -p '${DOCKER_PASS}'"
-                    sh "docker push ${DOCKERHUB_ID}/${IMAGE_NAME}:latest"
+                script {
+                    sh 'docker build -t $REPO_URI:latest .'
                 }
             }
         }
-        
-        stage('🚢 Deploy to Kubernetes') {
+
+        stage('Login to ECR') {
             steps {
-                withAWS(credentials: 'aws-credentials', region: env.AWS_REGION) {
-                    sh "aws eks --region ${env.AWS_REGION} update-kubeconfig --name ${env.CLUSTER_NAME}"
-                    sh 'kubectl apply -f k8s/'
+                script {
+                    sh 'aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REPO_URI'
                 }
             }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                script {
+                    sh 'docker push $REPO_URI:latest'
+                }
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                script {
+                    sh 'aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME'
+                    sh 'kubectl apply -f k8s/deployment.yaml'
+                    sh 'kubectl apply -f k8s/service.yaml'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment successful on EKS!"
+            sh 'kubectl get svc'
+        }
+        failure {
+            echo "❌ Build or Deployment failed. Check logs."
         }
     }
 }

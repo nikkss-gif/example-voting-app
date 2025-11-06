@@ -5,20 +5,23 @@ pipeline {
         REPO_URI = '785661981860.dkr.ecr.ap-south-1.amazonaws.com/devops-project-repo'
         CLUSTER_NAME = 'devops-project-cluster'
         REGION = 'ap-south-1'
-        DEPLOYMENT_NAME = 'devops-app'
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/nikkss-gif/example-voting-app'
+                git branch: 'main', url: 'https://github.com/nikkss-gif/example-voting-app.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh 'docker build -t $REPO_URI:latest .'
+                    // Build the vote app Docker image from its folder
+                    sh '''
+                    cd vote
+                    docker build -t $REPO_URI:latest .
+                    '''
                 }
             }
         }
@@ -26,7 +29,9 @@ pipeline {
         stage('Login to ECR') {
             steps {
                 script {
-                    sh 'aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REPO_URI'
+                    sh '''
+                    aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REPO_URI
+                    '''
                 }
             }
         }
@@ -34,7 +39,9 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 script {
-                    sh 'docker push $REPO_URI:latest'
+                    sh '''
+                    docker push $REPO_URI:latest
+                    '''
                 }
             }
         }
@@ -42,9 +49,13 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 script {
-                    sh 'aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME'
-                    sh 'kubectl apply -f k8s/deployment.yaml'
-                    sh 'kubectl apply -f k8s/service.yaml'
+                    sh '''
+                    aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME
+                    kubectl apply -f k8s/redis-deployment.yaml
+                    kubectl apply -f k8s/redis-service.yaml
+                    kubectl apply -f k8s/vote-deployment.yaml
+                    kubectl apply -f k8s/vote-service.yaml
+                    '''
                 }
             }
         }
@@ -52,11 +63,11 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deployment successful on EKS!"
+            echo "✅ Deployment successful!"
             sh 'kubectl get svc'
         }
         failure {
-            echo "❌ Build or Deployment failed. Check logs."
+            echo "❌ Deployment failed. Check Jenkins logs."
         }
     }
 }

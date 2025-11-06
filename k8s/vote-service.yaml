@@ -3,9 +3,9 @@ kind: Service
 metadata:
   name: vote-service
 spec:
-  type: LoadBalancer # This makes the service accessible from the internet
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
   selector:
     app: vote
-  ports:
-  - port: 80
-    targetPort: 80

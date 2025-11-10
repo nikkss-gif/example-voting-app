@@ -7,6 +7,7 @@ pipeline {
         REPO_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devops-project-repo"
         CLUSTER_NAME = 'devops-project-cluster'
         IMAGE_TAG = "latest"
+        KUBECONFIG = '/var/lib/jenkins/.kube/config'   // ✅ ensure kubectl uses Jenkins kubeconfig
     }
 
     stages {
@@ -23,6 +24,7 @@ pipeline {
                     sh '''
                     echo "🧹 Cleaning previously applied Kubernetes resources..."
                     kubectl delete -f k8s-specifications --ignore-not-found=true || true
+                    kubectl wait --for=delete pod -l app --timeout=30s -n default || true
                     sleep 3
                     '''
                 }
@@ -84,7 +86,7 @@ pipeline {
                 script {
                     sh '''
                     echo "🚀 Deploying to Amazon EKS cluster: ${CLUSTER_NAME}"
-                    aws eks update-kubeconfig --region ${REGION} --name ${CLUSTER_NAME}
+                    aws eks update-kubeconfig --region ${REGION} --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG}
 
                     echo "📦 Applying Redis and DB..."
                     kubectl apply -f k8s-specifications/redis-deployment.yaml
